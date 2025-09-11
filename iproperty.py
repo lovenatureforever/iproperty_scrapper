@@ -350,10 +350,7 @@ def click_next_page_button(driver, timeout=10):
         LOG.error(f"Error clicking next page: {e}")
         return False
 
-def main():
-    keyword = 'ativo suites'
-    tab = 'buy'
-    state = 'All States'
+def main(keyword='ativo suites', tab='buy', state='All States'):
     try:
         driver = setup_driver()
         if not driver:

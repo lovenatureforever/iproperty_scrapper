@@ -1,3 +1,6 @@
 /logs
 /__pycache__
 appconfig_server.py
+/build
+/dist
+/venv
