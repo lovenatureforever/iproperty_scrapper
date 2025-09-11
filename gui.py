@@ -81,14 +81,24 @@ class iPropertyGUI:
     def run_scraper(self, keyword, tab, state):
         try:
             iproperty.LOG = main_logger("iProperty")
-            iproperty.stop_flag = lambda: self.stop_scraping
+            # Clean up any existing driver
+            try:
+                if hasattr(iproperty, 'driver') and iproperty.driver:
+                    iproperty.driver.quit()
+            except:
+                pass
+            iproperty.driver = None
+            
             iproperty.main(keyword, tab, state)
             if self.stop_scraping:
                 self.root.after(0, self.scraping_complete, "Scraping stopped by user")
             else:
-                self.root.after(0, self.scraping_complete, "Scraping completed successfully!")
+                self.root.after(0, self.scraping_complete, "Scraping finished!")
+        except SystemExit:
+            self.root.after(0, self.scraping_complete, "Scraping stopped by user")
         except Exception as e:
-            self.root.after(0, self.scraping_complete, f"Error: {str(e)}")
+            error_msg = "Chrome session error. Please restart Chrome Debug mode." if "GetHandleVerifier" in str(e) else str(e)
+            self.root.after(0, self.scraping_complete, f"Error: {error_msg}")
             
     def start_chrome_debug(self):
         try:
@@ -103,7 +113,6 @@ class iPropertyGUI:
                 f"--user-data-dir={debug_dir}"
             ])
             self.status_label.config(text="Chrome debug mode started")
-            messagebox.showinfo("Success", "Chrome started in debug mode on port 9222")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to start Chrome: {str(e)}")
     
@@ -115,6 +124,15 @@ class iPropertyGUI:
                 iproperty.driver.quit()
         except:
             pass
+        iproperty.driver = None
+        # Force thread termination
+        if self.scraping_thread and self.scraping_thread.is_alive():
+            import ctypes
+            ctypes.pythonapi.PyThreadState_SetAsyncExc(
+                ctypes.c_long(self.scraping_thread.ident), 
+                ctypes.py_object(SystemExit)
+            )
+        self.scraping_complete("Scraping stopped by user")
     
     def scraping_complete(self, message):
         self.start_btn.config(state="normal")

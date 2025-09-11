@@ -1,33 +1,20 @@
-import os
-import gzip
-import math
-import requests
 import json
-import urllib3
 import time
 import pymysql
-import string
-import uuid
 import re
-from datetime import datetime
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
 from selenium.webdriver import ActionChains
-from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.common import NoSuchElementException
-from bs4 import BeautifulSoup
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import WebDriverException, TimeoutException
 
 from appconfig_server import AppConfig
 from logger import main_logger
 
 # Global variables
-stop_flag = lambda: False
 driver = None
 
 
@@ -47,8 +34,6 @@ def setup_driver():
         options.add_argument("--start-maximized")
 
     try:
-        # driver = webdriver.Chrome(options=options, service=ChromeService(ChromeDriverManager().install()))
-        # driver = webdriver.Chrome(options=options, service=ChromeService(executable_path='/home/smartappsystem/taas-insert/chromedriver'))
         driver = webdriver.Chrome(options=options)
         driver.execute_cdp_cmd("Page.enable", {})
         driver.execute_cdp_cmd("Runtime.enable", {})
@@ -70,31 +55,22 @@ def __click_element__(driver, element, use_java=False):
 
 
 def wait_for_search_results(driver, timeout=5):
-    """Wait for search results to load completely."""
     wait = WebDriverWait(driver, timeout)
-    
-    # Wait for listing list to be present
     wait.until(
         EC.presence_of_element_located((By.CSS_SELECTOR, "ul[data-test-id='listing-list']"))
     )
-    
-    # Wait for pagination to be present (indicates results are loaded)
     try:
         wait.until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "[data-test-id='pagination-wrapper'], .pagination-summary"))
         )
     except TimeoutException:
-        # Pagination might not be present if few results
         pass
-    
-    # Additional wait for page to be fully loaded
     wait.until(
         lambda d: d.execute_script("return document.readyState") == "complete"
     )
 
 
 def _pick_phone_by_label(phones_list, label_target):
-    """Pick phone number by label (mobile, phone, whatsapp)."""
     for phone in phones_list:
         label = (phone.get("label") or "").lower()
         number = phone.get("number")
@@ -310,9 +286,6 @@ def find_request_ids(driver, url_pattern):
 
 def find_next_page_button(driver, timeout=10):
     try:
-        wait = WebDriverWait(driver, timeout)
-        
-        # Check for next page button (not disabled)
         next_page_selectors = [
             "//li[@class='pagination-item']//a[@aria-label='Go to next page']",
             "//a[@aria-label='Go to next page']",
@@ -340,7 +313,6 @@ def find_next_page_button(driver, timeout=10):
 
 def click_next_page_button(driver, timeout=10):
     try:
-        wait = WebDriverWait(driver, timeout)
         next_page_button = find_next_page_button(driver, timeout=2)
         if next_page_button:
             time.sleep(1)
@@ -354,7 +326,34 @@ def click_next_page_button(driver, timeout=10):
         LOG.error(f"Error clicking next page: {e}")
         return False
 
-def main(keyword='ativo suites', tab='BUY', state='All States'):
+def select_state_filter(driver, state):
+    try:
+        if state == "All States":
+            return True
+        
+        # Open state filter dropdown
+        filter_button = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.CLASS_NAME, "ant-select")))
+        __click_element__(driver, filter_button)
+        time.sleep(1)
+        
+        options = WebDriverWait(driver, 10).until(EC.presence_of_all_elements_located(
+            (By.CSS_SELECTOR, "ul.ant-select-dropdown-menu li")
+        ))
+
+        for option in options:
+            if option.text.strip().lower() == state.strip().lower():
+                __click_element__(driver, option)
+                time.sleep(2)
+                return True
+
+        LOG.warning(f"State '{state}' not found in filter options")
+        return False
+        
+    except Exception as e:
+        LOG.error(f"Error selecting state filter: {e}")
+        return False
+
+def main(keyword="ativo suites", tab='BUY', state='All States'):
     global driver
     try:
         driver = setup_driver()
@@ -372,6 +371,9 @@ def main(keyword='ativo suites', tab='BUY', state='All States'):
         wait.until(
             lambda d: d.execute_script("return document.readyState") == "complete"
         )
+        time.sleep(3)
+        select_state_filter(driver, state)
+        time.sleep(2)
         # Input keyword into Ant Design search field
         search_input = wait.until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".ant-select-search__field"))
@@ -379,7 +381,7 @@ def main(keyword='ativo suites', tab='BUY', state='All States'):
         search_input.clear()
         time.sleep(1)
         
-        search_input.send_keys("ativo suites")
+        search_input.send_keys(keyword)
         time.sleep(2)
         search_input.send_keys(Keys.ENTER)
         time.sleep(3)
@@ -388,18 +390,23 @@ def main(keyword='ativo suites', tab='BUY', state='All States'):
         clear_performance_logs(driver)
         time.sleep(2)  # Wait for logs to clear
         
-        next_page = 2
-        while next_page and not stop_flag():
+        next_page = 1
+        while next_page:
             # Wait for search result
             for _ in range(4):
-                if stop_flag():
-                    break
                 try:
-                    wait_for_search_results(driver)
+                    WebDriverWait(driver, 5).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "ul[data-test-id='listing-list']"))
+                    )
+                    wait.until(
+                        lambda d: d.execute_script("return document.readyState") == "complete"
+                    )
                     break
-                except Exception:
-                    if stop_flag():
-                        break
+                except TimeoutException:
+                    tmp_elements = driver.find_elements(By.CSS_SELECTOR, "ul.no-result-suggestions")
+                    if tmp_elements:
+                        LOG.warning("No results found")
+                        return
                     driver.refresh()
                     time.sleep(10)
                     continue
@@ -411,8 +418,6 @@ def main(keyword='ativo suites', tab='BUY', state='All States'):
             data_found = False
             
             for rid in ids:
-                if stop_flag():
-                    break
                 try:
                     body = driver.execute_cdp_cmd("Network.getResponseBody", {"requestId": rid})
                     if body and body.get("body"):
@@ -426,6 +431,10 @@ def main(keyword='ativo suites', tab='BUY', state='All States'):
                     continue
 
             if not data_found:
+                if next_page == 1:
+                    driver.refresh()
+                    time.sleep(10)
+                    continue
                 LOG.warning("No API response data found, skipping this page")
                 next_page = 0
 
@@ -441,4 +450,4 @@ def main(keyword='ativo suites', tab='BUY', state='All States'):
 
 if __name__ == '__main__':
     LOG = main_logger("iProperty")
-    main()
+    main(keyword="ativo suites", tab='BUY', state='Selangor')
