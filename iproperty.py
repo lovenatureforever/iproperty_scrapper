@@ -395,7 +395,7 @@ def main(keyword="ativo suites", tab='BUY', state='All States'):
             # Wait for search result
             for _ in range(4):
                 try:
-                    WebDriverWait(driver, 5).until(
+                    WebDriverWait(driver, 10).until(
                         EC.presence_of_element_located((By.CSS_SELECTOR, "ul[data-test-id='listing-list']"))
                     )
                     wait.until(
@@ -408,10 +408,7 @@ def main(keyword="ativo suites", tab='BUY', state='All States'):
                         LOG.warning("No results found")
                         return
                     driver.refresh()
-                    time.sleep(10)
                     continue
-            
-            time.sleep(10)
 
             # Process first page
             ids = find_request_ids(driver, r"/consumer/api/listing-search-with-auth")
