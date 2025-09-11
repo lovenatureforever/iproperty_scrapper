@@ -26,6 +26,10 @@ from selenium.common.exceptions import WebDriverException, TimeoutException
 from appconfig_server import AppConfig
 from logger import main_logger
 
+# Global variables
+stop_flag = lambda: False
+driver = None
+
 
 def setup_driver():
     options = webdriver.ChromeOptions()
@@ -179,7 +183,7 @@ def _prepare_item_data(item):
         "lister_email": lister_email
     }
 
-def handle_api_response(json_data, keyword='', tab='buy', state='All States'):
+def handle_api_response(json_data, keyword='', tab='BUY', state='All States'):
     conn = None
     try:
         # Extract response metadata
@@ -350,12 +354,20 @@ def click_next_page_button(driver, timeout=10):
         LOG.error(f"Error clicking next page: {e}")
         return False
 
-def main(keyword='ativo suites', tab='buy', state='All States'):
+def main(keyword='ativo suites', tab='BUY', state='All States'):
+    global driver
     try:
         driver = setup_driver()
         if not driver:
             return
-        driver.get("https://www.iproperty.com.my/")
+        url = "https://www.iproperty.com.my/"
+        if tab == "BUY":
+            url = "https://www.iproperty.com.my/"
+        elif tab == "RENT":
+            url = "https://www.iproperty.com.my/rent/"
+        elif tab == "NEW":
+            url = "https://www.iproperty.com.my/new-property/"
+        driver.get(url)
         wait = WebDriverWait(driver, 60)
         wait.until(
             lambda d: d.execute_script("return document.readyState") == "complete"
@@ -377,13 +389,17 @@ def main(keyword='ativo suites', tab='buy', state='All States'):
         time.sleep(2)  # Wait for logs to clear
         
         next_page = 2
-        while next_page:
+        while next_page and not stop_flag():
             # Wait for search result
             for _ in range(4):
+                if stop_flag():
+                    break
                 try:
                     wait_for_search_results(driver)
                     break
                 except Exception:
+                    if stop_flag():
+                        break
                     driver.refresh()
                     time.sleep(10)
                     continue
@@ -395,6 +411,8 @@ def main(keyword='ativo suites', tab='buy', state='All States'):
             data_found = False
             
             for rid in ids:
+                if stop_flag():
+                    break
                 try:
                     body = driver.execute_cdp_cmd("Network.getResponseBody", {"requestId": rid})
                     if body and body.get("body"):

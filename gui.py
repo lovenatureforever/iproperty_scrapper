@@ -14,8 +14,10 @@ class iPropertyGUI:
         
         # Variables
         self.keyword_var = tk.StringVar(value="ativo suites")
-        self.tab_var = tk.StringVar(value="buy")
+        self.tab_var = tk.StringVar(value="BUY")
         self.state_var = tk.StringVar(value="All States")
+        self.scraping_thread = None
+        self.stop_scraping = False
         
         self.setup_ui()
         
@@ -30,22 +32,28 @@ class iPropertyGUI:
         
         # Tab selection
         ttk.Label(main_frame, text="Tab:").grid(row=1, column=0, sticky=tk.W, pady=5)
-        tab_combo = ttk.Combobox(main_frame, textvariable=self.tab_var, values=["buy", "rent"], width=27)
+        tab_combo = ttk.Combobox(main_frame, textvariable=self.tab_var, values=["BUY", "RENT", "NEW"], width=27)
         tab_combo.grid(row=1, column=1, pady=5)
         
         # State selection
         ttk.Label(main_frame, text="State:").grid(row=2, column=0, sticky=tk.W, pady=5)
         state_combo = ttk.Combobox(main_frame, textvariable=self.state_var, 
-                                  values=["All States", "Kuala Lumpur", "Selangor", "Penang", "Johor"], width=27)
+                                  values=["All States", "Selangor", "Kuala Lumpur", "Johor", "Penang", "Perak", "Negeri Sembilan", "Melaka", "Pahang", "Sabah", "Sarawak", "Kedah", "Putrajaya", "Kelantan", "Terengganu", "Perlis", "Labuan"], width=27)
         state_combo.grid(row=2, column=1, pady=5)
         
         # Chrome Debug button
         self.chrome_btn = ttk.Button(main_frame, text="Start Chrome Debug", command=self.start_chrome_debug)
         self.chrome_btn.grid(row=3, column=0, columnspan=2, pady=10)
         
-        # Start button
-        self.start_btn = ttk.Button(main_frame, text="Start Scraping", command=self.start_scraping)
-        self.start_btn.grid(row=4, column=0, columnspan=2, pady=10)
+        # Start and Stop buttons
+        button_frame = ttk.Frame(main_frame)
+        button_frame.grid(row=4, column=0, columnspan=2, pady=10)
+        
+        self.start_btn = ttk.Button(button_frame, text="Start Scraping", command=self.start_scraping)
+        self.start_btn.grid(row=0, column=0, padx=5)
+        
+        self.stop_btn = ttk.Button(button_frame, text="Stop", command=self.stop_scraping_func, state="disabled")
+        self.stop_btn.grid(row=0, column=1, padx=5)
         
         # Status label
         self.status_label = ttk.Label(main_frame, text="Ready to start")
@@ -61,18 +69,24 @@ class iPropertyGUI:
             return
             
         self.start_btn.config(state="disabled")
+        self.stop_btn.config(state="normal")
+        self.stop_scraping = False
         self.status_label.config(text="Scraping in progress...")
         
         # Run scraping in separate thread
-        thread = threading.Thread(target=self.run_scraper, args=(keyword, tab, state))
-        thread.daemon = True
-        thread.start()
+        self.scraping_thread = threading.Thread(target=self.run_scraper, args=(keyword, tab, state))
+        self.scraping_thread.daemon = True
+        self.scraping_thread.start()
         
     def run_scraper(self, keyword, tab, state):
         try:
             iproperty.LOG = main_logger("iProperty")
+            iproperty.stop_flag = lambda: self.stop_scraping
             iproperty.main(keyword, tab, state)
-            self.root.after(0, self.scraping_complete, "Scraping completed successfully!")
+            if self.stop_scraping:
+                self.root.after(0, self.scraping_complete, "Scraping stopped by user")
+            else:
+                self.root.after(0, self.scraping_complete, "Scraping completed successfully!")
         except Exception as e:
             self.root.after(0, self.scraping_complete, f"Error: {str(e)}")
             
@@ -93,8 +107,18 @@ class iPropertyGUI:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to start Chrome: {str(e)}")
     
+    def stop_scraping_func(self):
+        self.stop_scraping = True
+        self.status_label.config(text="Stopping scraper...")
+        try:
+            if hasattr(iproperty, 'driver') and iproperty.driver:
+                iproperty.driver.quit()
+        except:
+            pass
+    
     def scraping_complete(self, message):
         self.start_btn.config(state="normal")
+        self.stop_btn.config(state="disabled")
         self.status_label.config(text=message)
         messagebox.showinfo("Status", message)
 
