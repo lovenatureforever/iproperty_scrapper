@@ -200,9 +200,11 @@ def handle_api_response(json_data, keyword='', tab='buy', state='All States'):
             host=AppConfig.MYSQL_SERVER,
             user=AppConfig.MYSQL_USER,
             passwd=AppConfig.MYSQL_PASSWORD,
-            db=AppConfig.MYSQL_DATABASE
+            db=AppConfig.MYSQL_DATABASE,
+            connect_timeout=20,
+            read_timeout=60
         )
-        
+
         # SQL for upsert
         insert_sql = """
             INSERT INTO items (
@@ -260,7 +262,7 @@ def handle_api_response(json_data, keyword='', tab='buy', state='All States'):
                 except Exception as e:
                     error_count += 1
                     LOG.error(f"Error processing listing {i}: {e}", exc_info=True)
-                continue
+                    continue
         
             # Commit all changes
             conn.commit()
