@@ -187,7 +187,7 @@ def handle_api_response(json_data, keyword='', tab='BUY', state='All States'):
 
         # SQL for upsert
         insert_sql = """
-            INSERT INTO items (
+            INSERT INTO iproperty (
                 channel, property_id, title, location_title, active, address, price_min, price_max,
                 organisation_type, organisation_name, organisation_phone, organisation_mobile, organisation_whatsapp, organisation_email,
                 lister_type, lister_name, lister_license,
