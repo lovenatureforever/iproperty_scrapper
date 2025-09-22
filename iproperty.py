@@ -2,6 +2,8 @@ import json
 import time
 import pymysql
 import re
+import csv
+import datetime
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -161,6 +163,7 @@ def _prepare_item_data(item):
 
 def handle_api_response(json_data, keyword='', tab='BUY', state='All States'):
     conn = None
+    processed_items = []  # Collect items for CSV
     try:
         # Extract response metadata
         total_count = json_data.get("totalCount", 0)
@@ -187,7 +190,7 @@ def handle_api_response(json_data, keyword='', tab='BUY', state='All States'):
 
         # SQL for upsert
         insert_sql = """
-            INSERT INTO items (
+            INSERT INTO iproperty (
                 channel, property_id, title, location_title, active, address, price_min, price_max,
                 organisation_type, organisation_name, organisation_phone, organisation_mobile, organisation_whatsapp, organisation_email,
                 lister_type, lister_name, lister_license,
@@ -237,6 +240,7 @@ def handle_api_response(json_data, keyword='', tab='BUY', state='All States'):
                     item_data["state"] = state
                     # Insert/update record
                     cursor.execute(insert_sql, item_data)
+                    processed_items.append(item_data)  # Add to list for CSV
                     processed_count += 1
                 
                 except Exception as e:
@@ -247,7 +251,8 @@ def handle_api_response(json_data, keyword='', tab='BUY', state='All States'):
             # Commit all changes
             conn.commit()
             LOG.info(f"Successfully processed {processed_count} listings, {error_count} errors")
-        
+        # for CSV after DB insert
+        return processed_items
     except Exception as e:
         if conn:
             conn.rollback()
@@ -353,8 +358,37 @@ def select_state_filter(driver, state):
         LOG.error(f"Error selecting state filter: {e}")
         return False
 
+def export_to_csv(items, keyword='', tab='BUY', state='All States', filename=None):
+    def safe(s):
+        return re.sub(r'[^A-Za-z0-9]+', '_', str(s)).strip('_')
+    if filename is None:
+        # timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"iproperty_{safe(keyword)}_{safe(tab)}_{safe(state)}.csv"
+
+    fieldnames = [
+        "channel", "property_id", "title", "location_title", "active", "address", "price_min", "price_max",
+        "organisation_type", "organisation_name", "organisation_phone", "organisation_mobile", "organisation_whatsapp", "organisation_email",
+        "lister_type", "lister_name", "lister_license", "lister_phone", "lister_mobile", "lister_whatsapp", "lister_email",
+        "keyword", "tab", "state"
+    ]
+    try:
+        with open(filename, "w", newline='', encoding="utf-8") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            for item in items:
+                writer.writerow(item)
+        LOG.info(f"Exported {len(items)} items to {filename}")
+    except Exception as e:
+        LOG.error(f"CSV export error: {e}")
+
 def main(keyword="ativo suites", tab='BUY', state='All States'):
     global driver
+    all_processed_items = []
+    
+    def safe(s):
+        return re.sub(r'[^A-Za-z0-9]+', '_', str(s)).strip('_')
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"propertyguru_{safe(keyword)}_{safe(tab)}_{safe(state)}_{timestamp}.csv"
     try:
         driver = setup_driver()
         if not driver:
@@ -372,6 +406,23 @@ def main(keyword="ativo suites", tab='BUY', state='All States'):
             lambda d: d.execute_script("return document.readyState") == "complete"
         )
         time.sleep(3)
+        # Detect Cloudflare human verification
+        if "We just want to make sure you are a human" in driver.page_source or "cf-turnstile-response" in driver.page_source:
+            LOG.warning("Cloudflare human verification detected. Please solve it manually in the browser window.")
+            input("Press Enter after you have completed the verification...")  # Wait for user to solve
+
+            # Reload the page after verification
+            driver.get(url)
+            time.sleep(3)
+        # Close modal if present
+        try:
+            close_btn = driver.find_element(By.CLASS_NAME, "bz-close-btn")
+            if close_btn.is_displayed() and close_btn.is_enabled():
+                close_btn.click()
+                time.sleep(1)
+                LOG.info("Closed fraud advisory modal.")
+        except Exception as e:
+            LOG.debug(f"No modal to close or error closing modal: {e}")
         select_state_filter(driver, state)
         time.sleep(2)
         # Input keyword into Ant Design search field
@@ -420,13 +471,15 @@ def main(keyword="ativo suites", tab='BUY', state='All States'):
                     if body and body.get("body"):
                         data = json.loads(body["body"])
                         next_page = data.get("nextPageToken", 0)
-                        handle_api_response(data, keyword, tab, state)
+                        page_items = handle_api_response(data, keyword, tab, state)
+                        if page_items:
+                            all_processed_items.extend(page_items)
                         data_found = True
                         break
                 except Exception as e:
                     LOG.warning(f"Error getting response body for request {rid}: {e}")
                     continue
-
+            export_to_csv(all_processed_items, keyword, tab, state, filename)
             if not data_found:
                 if next_page == 1:
                     driver.refresh()
@@ -447,4 +500,4 @@ def main(keyword="ativo suites", tab='BUY', state='All States'):
 
 if __name__ == '__main__':
     LOG = main_logger("iProperty")
-    main(keyword="ativo suites", tab='BUY', state='Selangor')
+    main(keyword="edgewood", tab='RENT', state='All States')
