@@ -407,7 +407,7 @@ def main(keyword="ativo suites", tab='BUY', state='All States'):
         )
         time.sleep(3)
         # Detect Cloudflare human verification
-        if "We just want to make sure you are a human" in driver.page_source or "cf-turnstile-response" in driver.page_source:
+        if "Verify you are human" in driver.page_source or "cf-turnstile-response" in driver.page_source:
             LOG.warning("Cloudflare human verification detected. Please solve it manually in the browser window.")
             input("Press Enter after you have completed the verification...")  # Wait for user to solve
 
