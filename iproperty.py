@@ -388,7 +388,7 @@ def main(keyword="ativo suites", tab='BUY', state='All States'):
     def safe(s):
         return re.sub(r'[^A-Za-z0-9]+', '_', str(s)).strip('_')
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"propertyguru_{safe(keyword)}_{safe(tab)}_{safe(state)}_{timestamp}.csv"
+    filename = f"iproperty_{safe(keyword)}_{safe(tab)}_{safe(state)}_{timestamp}.csv"
     try:
         driver = setup_driver()
         if not driver:
