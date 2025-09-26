@@ -364,6 +364,8 @@ def main(keyword="ativo suites", tab='BUY', state=''):
             if details:
                 export_to_csv(details, keyword, tab, state, filename=filename)
 
+            time.sleep(15)
+
     except Exception as e:
         LOG.exception(f"Error: {e}")
     finally:
